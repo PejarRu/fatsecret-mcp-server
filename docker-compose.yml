@@ -1,0 +1,17 @@
+services:
+  fatsecret-mcp:
+    build: .
+    container_name: fatsecret-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - fatsecret-data:/app/data
+
+volumes:
+  fatsecret-data:

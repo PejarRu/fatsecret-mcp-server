@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -e .[dev]
+
+      - name: Run Ruff
+        run: ruff check src tests
+
+      - name: Run MyPy
+        run: mypy src
+
+      - name: Run tests
+        run: pytest -v --tb=short
+        env:
+          FATSECRET_CONSUMER_KEY: dummy
+          FATSECRET_CONSUMER_SECRET: dummy
+          MCP_AUTH_PASSWORD: dummy
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: fatsecret-mcp:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test container starts
+        run: |
+          docker run --rm -d --name test-fatsecret \
+            -e FATSECRET_CONSUMER_KEY=dummy \
+            -e FATSECRET_CONSUMER_SECRET=dummy \
+            -e MCP_AUTH_PASSWORD=dummy \
+            fatsecret-mcp:test
+          sleep 5
+          docker logs test-fatsecret
+          curl -f http://localhost:8000/health || (docker logs test-fatsecret && exit 1)
+          docker stop test-fatsecret
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif

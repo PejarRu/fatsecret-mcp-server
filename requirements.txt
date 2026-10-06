@@ -1,0 +1,6 @@
+mcp>=1.12.4,<2
+requests>=2.31,<3
+python-dotenv>=1,<2
+requests-oauthlib>=2,<3
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9,<1
