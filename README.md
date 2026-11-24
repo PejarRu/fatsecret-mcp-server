@@ -1,5 +1,7 @@
 # FatSecret MCP Server
 
+[![PejarRu/fatsecret-mcp-server MCP server](https://glama.ai/mcp/servers/PejarRu/fatsecret-mcp-server/badges/score.svg)](https://glama.ai/mcp/servers/PejarRu/fatsecret-mcp-server)
+
 Model Context Protocol (MCP) server for the **FatSecret Platform API**. Search foods, read and manage your personal nutrition diary, saved meals, exercise, weight, favorites, recipes, and monthly summaries — all from any MCP-compatible client (ChatGPT Web, Claude Desktop, custom agents).
 
 ## Features
