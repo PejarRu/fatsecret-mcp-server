@@ -49,11 +49,11 @@ PUBLIC_URL = os.getenv("MCP_PUBLIC_URL", "https://fatsecret.mcp.development.anto
 MCP_RESOURCE = f"{PUBLIC_URL}/mcp"
 MCP_PASSWORD = os.getenv("MCP_AUTH_PASSWORD")
 
-_transport = os.getenv("MCP_TRANSPORT")
-if _transport == "streamable-http" or (_transport is None and MCP_PASSWORD):
-    MCP_TRANSPORT: Literal["stdio", "streamable-http"] = "streamable-http"
-elif _transport in {None, "stdio"}:
-    MCP_TRANSPORT = "stdio"
+_transport = os.getenv("MCP_TRANSPORT", "stdio")
+if _transport == "stdio":
+    MCP_TRANSPORT: Literal["stdio", "streamable-http"] = "stdio"
+elif _transport == "streamable-http":
+    MCP_TRANSPORT = "streamable-http"
 else:
     raise ValueError(f"Unsupported MCP_TRANSPORT: {_transport!r}")
 
