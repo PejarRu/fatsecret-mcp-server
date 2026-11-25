@@ -176,6 +176,7 @@ Put behind any reverse proxy (Traefik, Nginx, Caddy) for HTTPS. Set `MCP_PUBLIC_
 | `MCP_PUBLIC_URL` | For OAuth | `http://localhost:8000` | Public HTTPS URL for callbacks |
 | `MCP_HOST` | No | `0.0.0.0` | Bind address |
 | `MCP_PORT` | No | `8000` | Port |
+| `MCP_TRANSPORT` | No | auto | `streamable-http` when `MCP_AUTH_PASSWORD` is set; otherwise `stdio` for local/registry introspection |
 | `FATSECRET_REGION` | No | `ES` | Catalog region |
 | `FATSECRET_LANGUAGE` | No | `es` | Catalog language |
 

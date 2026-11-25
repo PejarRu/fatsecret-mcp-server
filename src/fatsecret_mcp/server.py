@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 from datetime import datetime, timedelta
+from typing import Literal
 
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions
 from mcp.server.fastmcp import FastMCP
@@ -46,31 +47,56 @@ from .tools.stats import daily_nutrition_summary, food_history_stats
 
 PUBLIC_URL = os.getenv("MCP_PUBLIC_URL", "https://fatsecret.mcp.development.antonberzins.com")
 MCP_RESOURCE = f"{PUBLIC_URL}/mcp"
-MCP_PASSWORD = os.environ["MCP_AUTH_PASSWORD"]
+MCP_PASSWORD = os.getenv("MCP_AUTH_PASSWORD")
 
-authenticator = get_authenticator()
-provider = SingleUserOAuthProvider(PUBLIC_URL, MCP_PASSWORD)
-server = FastMCP(
-    "FatSecret",
-    instructions="Search foods and read or manage the owner's existing FatSecret nutrition diary. Before creating, editing, or deleting an entry, clearly confirm the exact food, serving, quantity, meal, and date with the user. API-created entries are verified only in FatSecret Platform API; never claim they are visible in the consumer FatSecret web/mobile app unless the user confirms it, because that interface may not synchronize API writes.",
-    host=os.getenv("MCP_HOST", "0.0.0.0"),
-    port=int(os.getenv("MCP_PORT", "8000")),
-    streamable_http_path="/mcp",
-    stateless_http=True,
-    json_response=True,
-    auth_server_provider=provider,
-    auth=AuthSettings(
-        issuer_url=AnyHttpUrl(PUBLIC_URL),
-        resource_server_url=AnyHttpUrl(MCP_RESOURCE),
-        required_scopes=["fatsecret:read", "fatsecret:write"],
-        validate_token_resource=True,
-        client_registration_options=ClientRegistrationOptions(
-            enabled=True,
-            valid_scopes=["fatsecret:read", "fatsecret:write"],
-            default_scopes=["fatsecret:read", "fatsecret:write"],
-        ),
-    ),
+_transport = os.getenv("MCP_TRANSPORT")
+if _transport == "streamable-http" or (_transport is None and MCP_PASSWORD):
+    MCP_TRANSPORT: Literal["stdio", "streamable-http"] = "streamable-http"
+elif _transport in {None, "stdio"}:
+    MCP_TRANSPORT = "stdio"
+else:
+    raise ValueError(f"Unsupported MCP_TRANSPORT: {_transport!r}")
+
+SERVER_INSTRUCTIONS = (
+    "Search foods and read or manage the owner's existing FatSecret nutrition diary. "
+    "Before creating, editing, or deleting an entry, clearly confirm the exact food, "
+    "serving, quantity, meal, and date with the user. API-created entries are verified "
+    "only in FatSecret Platform API; never claim they are visible in the consumer "
+    "FatSecret web/mobile app unless the user confirms it, because that interface may "
+    "not synchronize API writes."
 )
+
+provider: SingleUserOAuthProvider | None = None
+if MCP_TRANSPORT == "streamable-http":
+    if not MCP_PASSWORD:
+        raise RuntimeError("MCP_AUTH_PASSWORD is required for streamable-http transport")
+    provider = SingleUserOAuthProvider(PUBLIC_URL, MCP_PASSWORD)
+    server = FastMCP(
+        "FatSecret",
+        instructions=SERVER_INSTRUCTIONS,
+        host=os.getenv("MCP_HOST", "0.0.0.0"),
+        port=int(os.getenv("MCP_PORT", "8000")),
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        json_response=True,
+        auth_server_provider=provider,
+        auth=AuthSettings(
+            issuer_url=AnyHttpUrl(PUBLIC_URL),
+            resource_server_url=AnyHttpUrl(MCP_RESOURCE),
+            required_scopes=["fatsecret:read", "fatsecret:write"],
+            validate_token_resource=True,
+            client_registration_options=ClientRegistrationOptions(
+                enabled=True,
+                valid_scopes=["fatsecret:read", "fatsecret:write"],
+                default_scopes=["fatsecret:read", "fatsecret:write"],
+            ),
+        ),
+    )
+else:
+    server = FastMCP(
+        "FatSecret",
+        instructions=SERVER_INSTRUCTIONS,
+    )
 
 
 def default_range():
@@ -81,6 +107,7 @@ def default_range():
 @server.tool()
 async def diary_entries_list(date_from: str | None = None, date_to: str | None = None):
     """List individual FatSecret diary entries. Defaults to the last three months. Dates use YYYY-MM-DD."""
+    authenticator = get_authenticator()
     if not authenticator.is_authorized():
         raise RuntimeError("FatSecret account is not authorized")
     if not date_from or not date_to:
@@ -320,10 +347,13 @@ def get_last_three_months_range():
 
 @server.custom_route("/fatsecret/reconnect", methods=["GET", "POST"])
 async def fatsecret_reconnect(request: Request):
+    if not MCP_PASSWORD:
+        return HTMLResponse("FatSecret reconnect is available only in authenticated HTTP mode.", status_code=503)
     error = ""
     if request.method == "POST":
         form = await request.form()
         if str(form.get("password", "")) == MCP_PASSWORD:
+            authenticator = get_authenticator()
             token, _ = authenticator.get_request_token(f"{PUBLIC_URL}/fatsecret/callback")
             return RedirectResponse(
                 f"https://authentication.fatsecret.com/oauth/authorize?oauth_token={token}",
@@ -338,6 +368,7 @@ async def fatsecret_reconnect(request: Request):
 
 @server.custom_route("/fatsecret/callback", methods=["GET"])
 async def fatsecret_callback(request: Request):
+    authenticator = get_authenticator()
     verifier = request.query_params.get("oauth_verifier")
     token = request.query_params.get("oauth_token")
     if not verifier or not token or token != authenticator.request_token:
@@ -349,6 +380,8 @@ async def fatsecret_callback(request: Request):
 
 @server.custom_route("/consent", methods=["GET", "POST"])
 async def consent(request: Request):
+    if provider is None or not MCP_PASSWORD:
+        return HTMLResponse("OAuth consent is available only in authenticated HTTP mode.", status_code=503)
     request_id = request.query_params.get("request", "")
     error = ""
     if request.method == "POST":
@@ -371,7 +404,7 @@ async def health(request: Request):
 
 
 def main():
-    server.run(transport="streamable-http")
+    server.run(transport=MCP_TRANSPORT)
 
 
 if __name__ == "__main__":
